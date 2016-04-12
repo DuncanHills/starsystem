@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from twitter.common import app, log
 
+from starsystem import constants
 
 class RequestError(Exception):
     pass
@@ -20,10 +21,10 @@ class SubsonicError(Exception):
     pass
 
 
-API_VERSION = '1.14.0'
-
 def configure_app(app):
     """ Register the application's options, set usage, and configure submodules. """
+
+    app.set_name('starsystem')
 
     app.set_usage("{} [opts]\nOptions marked with * are required.".format(app.name()))
 
@@ -45,7 +46,7 @@ def configure_app(app):
 
     app.set_option('twitter_common_log_disk_log_level', 'NONE', force=True)
 
-def required_options_present(options, materialized_options):
+def required_options_present(options, option_values):
     """ 
     Check for the presence of required options, with the side effect of
     logging missing options.
@@ -53,8 +54,8 @@ def required_options_present(options, materialized_options):
     missing_options = []
     for option in sorted(options, key=lambda option: option.get_opt_string()):
         if option.dest is not None:
-            materialized_opt = getattr(materialized_options, option.dest)
-            if option.help.startswith('*') and materialized_opt in (None, ''):
+            option_value = getattr(option_values, option.dest)
+            if option.help.startswith('*') and option_value in (None, ''):
                 missing_options.append(option)
     if len(missing_options) > 0:
         for option in missing_options:
@@ -64,7 +65,7 @@ def required_options_present(options, materialized_options):
         return True
 
 def get_sync_file_path(download_path):
-    return os.path.join(download_path, '.synced_to')
+    return os.path.join(download_path, constants.SYNC_FILE_NAME)
 
 def get_start_date(download_path, starred_songs, songs_sorted=False):
     """ 
@@ -104,6 +105,19 @@ def song_to_starred_time_struct(song):
     except ValueError as e:
         return time.gmtime(0)
 
+def handle_request(f, validate_json=True):
+    """ Run a function that generates a Requests.Response and handle exceptions. """
+    try:
+        response = f()
+        response.raise_for_status()
+        if validate_json:
+            err = response.json()['subsonic-response'].get('error')
+            if err is not None:
+                raise SubsonicError('Error code {}: {}'.format(err['code'], err['message']))
+        return response
+    except (rex.RequestException, SubsonicError) as e:
+        reraise_as_exception_type(RequestError, e)
+
 def create_directory_if_missing_from_path(path):
     """ Create the directories necessary to use the full path specified. """
     dirpath = os.path.dirname(path)
@@ -121,19 +135,6 @@ def reraise_as_exception_type(cls, exception):
     exception_class, _, traceback = sys.exc_info()
     msg = 'Caught exception of type {}: {}'.format(exception_class, exception)
     raise cls, cls(msg), traceback
-
-def handle_request(f, validate_json=True):
-    """ Run a function that generates a Requests.Response and handle exceptions. """
-    try:
-        response = f()
-        response.raise_for_status()
-        if validate_json:
-            err = response.json()['subsonic-response'].get('error')
-            if err is not None:
-                raise SubsonicError('Error code {}: {}'.format(err['code'], err['message']))
-        return response
-    except (rex.RequestException, SubsonicError) as e:
-        reraise_as_exception_type(RequestError, e)
 
 @contextmanager
 def open_tempfile_with_atomic_write_to(path, **kwargs):
@@ -164,6 +165,10 @@ def open_tempfile_with_atomic_write_to(path, **kwargs):
                 raise e
 
 def main(args, options):
+    # Requests vendors its own urllib3, which emits annoying messages
+    # when using insecure mode
+    requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
     if len(args) != 0:
         app.help()
 
@@ -181,7 +186,7 @@ def main(args, options):
         s = options.salt,
         c = app.name(),
         f = 'json',
-        v = API_VERSION)
+        v = constants.API_VERSION)
 
     session = requests.Session()
     session.params.update(base_params)
@@ -234,8 +239,3 @@ def main(args, options):
                         sync_file.write(str(time.mktime(starred_date)))
                 except EnvironmentError:
                     pass
-
-
-requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
-configure_app(app)
-app.main()
