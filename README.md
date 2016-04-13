@@ -5,6 +5,10 @@ A best-attempt is made to track the history of synced files so they are not re-s
 
 I use starsystem in combination with BTSync to bridge the gap between Subsonic and Traktor on multiple machines. You should too!
 
+## Download
+
+If you want to download a pre-built copy, you can find the latest release [here](https://github.com/ascrane/starsystem/releases/latest).
+
 ## Build
 
 First, clone the repo and build a copy of starsystem:
