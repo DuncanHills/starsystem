@@ -25,7 +25,7 @@ You can now run the [PEX](https://pex.readthedocs.org/en/stable/). Copy it somew
 
 ## Usage
 
-See the [Subsonic API documentation](http://www.subsonic.org/pages/api.jsp) for information on generating your API token.
+You will need an API token to use this script. You can generate it by following the [Subsonic API documentation](http://www.subsonic.org/pages/api.jsp) or running starsystem with the `-g` or `--gen-token-interactive` options.
 
 ```
 Usage: starsystem [opts]
@@ -51,4 +51,6 @@ Options:
                         Collect all songs since the specified date.
   -I, --insecure        Don't verify SSL certificates. Verification is enabled
                         by default. [default: False]
+  -g, --gen-token-interactive
+                        Generate an API token interactively. [default: False]
 ```
