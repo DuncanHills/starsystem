@@ -13,11 +13,16 @@ from twitter.common import app, log
 
 from starsystem import constants
 
+
 class RequestError(Exception):
     pass
 
 
 class SubsonicError(Exception):
+    pass
+
+
+class SyncFileError(Exception):
     pass
 
 
@@ -67,23 +72,45 @@ def required_options_present(options, option_values):
 def get_sync_file_path(download_path):
     return os.path.join(download_path, constants.SYNC_FILE_NAME)
 
-def get_start_date(download_path, starred_songs, songs_sorted=False):
+def read_time_struct_from_sync_file(sync_file_path):
+    try:
+        with open(sync_file_path, 'r') as sync_file:
+            try:
+                return time.gmtime(float(sync_file.readline().strip()))
+            except ValueError as e:
+                reraise_as_exception_type(SyncFileError, e)
+    except EnvironmentError as e:
+        reraise_as_exception_type(SyncFileError, e)
+
+
+def write_time_struct_to_sync_file(sync_file_path, time_struct):
+    try:
+        with open(sync_file_path, 'w') as sync_file:
+            try:
+                sync_file.write(str(time.mktime(time_struct)))
+            except TypeError as e:
+                reraise_as_exception_type(SyncFileError, e)
+    except EnvironmentError as e:
+        reraise_as_exception_type(SyncFileError, e)
+
+def get_start_date(download_path, starred_songs, songs_sorted=False, since=None):
     """ 
     Find the most recent starred date of synced songs in the download path.
 
     This will be explicitly stored in a file, but if that's missing
     it can be calculated from the directory contents.
 
+    Since overrides other dates if present.
+
     Return epoch time if there are no valid results otherwise.
     """
+    # Use since if present
+    if since is not None:
+        return time.strptime(str(since), '%Y-%m-%d')
+    # Try to get most recent sync date from sync file
     try:
-        with open(get_sync_file_path(download_path)) as sync_file:
-            try:
-                return time.gmtime(sync_file.readline().strip())
-            except TypeError:
-                # invalid file contents
-                pass
-    except EnvironmentError:
+        return read_time_struct_from_sync_file(get_sync_file_path(download_path))
+    except SyncFileError:
         pass
     starred_song_paths = { song['path'] for song in starred_songs if song.get('path') is not None }
     download_path_files = { os.path.join(os.path.relpath(path, download_path), filename) 
@@ -213,7 +240,8 @@ def main(args, options):
 
     # Sort the songs by starred date so we can sync them in chronological order
     sorted_starred_songs = sorted(starred_songs, key=song_to_starred_time_struct)
-    start_date = get_start_date(download_path, sorted_starred_songs, songs_sorted=True)
+    start_date = get_start_date(download_path, sorted_starred_songs, songs_sorted=True,
+                                since=options.since)
     sync_file_path = get_sync_file_path(download_path)
 
     # Sync each song in chronological order by starred date
@@ -234,8 +262,16 @@ def main(args, options):
                 download_file.write(download_response.content)
             starred_date = song_to_starred_time_struct(song)
             if starred_date != time.gmtime(0):
+                sync_file_is_stale = True
+                # Try to read most recent sync date from sync file.
                 try:
-                    with open(sync_file_path, 'w') as sync_file:
-                        sync_file.write(str(time.mktime(starred_date)))
-                except EnvironmentError:
+                    if read_time_struct_from_sync_file(sync_file_path) > starred_date:
+                        sync_file_is_stale = False
+                except SyncFileError:
                     pass
+                # Write starred date of downloaded file if newer than existing date.
+                if sync_file_is_stale:
+                    try:
+                        write_time_struct_to_sync_file(sync_file_path, starred_date)
+                    except SyncFileError:
+                        pass
