@@ -8,6 +8,8 @@ import sys
 import tempfile
 import time
 from contextlib import contextmanager
+from getpass import getpass
+from hashlib import md5
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from twitter.common import app, log
 
@@ -48,6 +50,8 @@ def configure_app(app):
                    help='Collect all songs since the specified date.')
     app.add_option('-I', '--insecure', dest='insecure', default=False, action="store_true",
                    help='Don\'t verify SSL certificates. Verification is enabled by default.')
+    app.add_option('-g', '--gen-token-interactive', dest='gen_token', default=False,
+                   action="store_true", help='Generate an API token interactively.')
 
     app.set_option('twitter_common_log_disk_log_level', 'NONE', force=True)
 
@@ -68,6 +72,15 @@ def required_options_present(options, option_values):
         return False
     else:
         return True
+
+def generate_token_interactive():
+    password = getpass('Enter your Subsonic password: ')
+    salt = getpass('Enter a salt (an integer of at least six digits): ')
+    if len(salt) < 6 or not salt.isdigit():
+        app.error('Salt value is not an integer of at least six digits.')
+    token = md5(password + salt).hexdigest()
+    print 'Your API token is: {}'.format(token)
+    print 'This must be used with the same salt value entered during this session.'
 
 def get_sync_file_path(download_path):
     return os.path.join(download_path, constants.SYNC_FILE_NAME)
@@ -214,6 +227,10 @@ def main(args, options):
     if len(args) != 0:
         app.help()
 
+    if options.gen_token:
+        generate_token_interactive()
+        app.shutdown(0)
+
     # Kind of a hack, but whatever
     option_definitions = app.Application.active()._main_options
 
@@ -251,7 +268,7 @@ def main(args, options):
 
     # Do nothing if no songs are starred
     if len(starred_songs) == 0:
-        exit(0)
+        app.shutdown(0)
 
     # Sort the songs by starred date so we can sync them in chronological order
     sorted_starred_songs = sorted(starred_songs, key=song_to_starred_time_struct)
