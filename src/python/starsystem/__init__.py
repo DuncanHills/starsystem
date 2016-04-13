@@ -164,6 +164,18 @@ def reraise_as_exception_type(cls, exception):
     raise cls, cls(msg), traceback
 
 @contextmanager
+def temporary_subdirectory(parent_directory):
+    path = tempfile.mkdtemp(dir=parent_directory)
+    try:
+        yield path
+    finally:
+        try:
+            shutil.rmtree(path)
+        except OSError as e:
+            if e.errno != errno.ENOENT:
+                raise
+
+@contextmanager
 def open_tempfile_with_atomic_write_to(path, **kwargs):
     """ 
     Open a temporary file object that atomically moves to the specified
@@ -171,9 +183,12 @@ def open_tempfile_with_atomic_write_to(path, **kwargs):
 
     Supports the same function signature as `open`.
 
+    The parent directory exist and be user-writable.
+
     WARNING: This is just like 'mv', it will clobber files!
     """
-    _tempfile = tempfile.NamedTemporaryFile(delete=False)
+    parent_directory = os.path.dirname(path)
+    _tempfile = tempfile.NamedTemporaryFile(delete=False, dir=parent_directory)
     _tempfile.close()
     tempfile_path = _tempfile.name
     try:
@@ -245,7 +260,7 @@ def main(args, options):
     sync_file_path = get_sync_file_path(download_path)
 
     # Sync each song in chronological order by starred date
-    for song in starred_songs:
+    for song in sorted_starred_songs:
         song_full_path = os.path.join(download_path, song['path'])
         if song_to_starred_time_struct(song) >= start_date and not os.path.exists(song_full_path):
             create_directory_if_missing_from_path(song_full_path)
