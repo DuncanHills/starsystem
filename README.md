@@ -1,5 +1,5 @@
 # starsystem
-A python script for syncing your starred songs from a Subsonic server to a local directory.
+A python tool for syncing your starred songs from a Subsonic server to a local directory.
 
 A best-attempt is made to track the history of synced files so they are not re-synced if you move or delete them. If you provide the `--since` option, all files since that date will be synced. Starsystem will not clobber existing files, so feel free to retag your local copies.
 
@@ -25,7 +25,7 @@ You can now run the [PEX](https://pex.readthedocs.org/en/stable/). Copy it somew
 
 ## Usage
 
-See the [Subsonic API documentation](https://www.google.com) for information on generating your API token.
+See the [Subsonic API documentation](http://www.subsonic.org/pages/api.jsp) for information on generating your API token.
 
 ```
 Usage: starsystem [opts]
