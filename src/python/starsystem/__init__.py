@@ -4,10 +4,12 @@ import errno
 import os
 import requests
 import requests.exceptions as rex
+import shutil
 import sys
 import tempfile
 import time
 from contextlib import contextmanager
+from functools import partial
 from getpass import getpass
 from hashlib import md5
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
@@ -55,8 +57,9 @@ def configure_app(app):
 
     app.set_option('twitter_common_log_disk_log_level', 'NONE', force=True)
 
+
 def required_options_present(options, option_values):
-    """ 
+    """
     Check for the presence of required options, with the side effect of
     logging missing options.
     """
@@ -73,6 +76,7 @@ def required_options_present(options, option_values):
     else:
         return True
 
+
 def generate_token_interactive():
     password = getpass('Enter your Subsonic password: ')
     salt = getpass('Enter a salt (an integer of at least six digits): ')
@@ -82,8 +86,10 @@ def generate_token_interactive():
     print 'Your API token is: {}'.format(token)
     print 'This must be used with the same salt value entered during this session.'
 
+
 def get_sync_file_path(download_path):
     return os.path.join(download_path, constants.SYNC_FILE_NAME)
+
 
 def read_time_struct_from_sync_file(sync_file_path):
     try:
@@ -106,8 +112,9 @@ def write_time_struct_to_sync_file(sync_file_path, time_struct):
     except EnvironmentError as e:
         reraise_as_exception_type(SyncFileError, e)
 
+
 def get_start_date(download_path, starred_songs, songs_sorted=False, since=None):
-    """ 
+    """
     Find the most recent starred date of synced songs in the download path.
 
     This will be explicitly stored in a file, but if that's missing
@@ -125,25 +132,26 @@ def get_start_date(download_path, starred_songs, songs_sorted=False, since=None)
         return read_time_struct_from_sync_file(get_sync_file_path(download_path))
     except SyncFileError:
         pass
-    starred_song_paths = { song['path'] for song in starred_songs if song.get('path') is not None }
-    download_path_files = { os.path.join(os.path.relpath(path, download_path), filename) 
-                            for path, _, filenames in os.walk(download_path)
-                                for filename in filenames }
-    synced_songs = [ song for song in starred_songs if song.get('path') in download_path_files ]
+    download_path_files = {os.path.join(os.path.relpath(path, download_path), filename)
+                           for path, _, filenames in os.walk(download_path)
+                           for filename in filenames}
+    synced_songs = [song for song in starred_songs if song.get('path') in download_path_files]
     # don't waste time if songs are already sorted
     get_most_recently_starred = (
         lambda x: x[-1] if songs_sorted else partial(max, key=song_to_starred_time_struct))
     if len(synced_songs) > 0:
         return song_to_starred_time_struct(get_most_recently_starred(synced_songs))
-    else: 
+    else:
         return time.gmtime(0)
+
 
 def song_to_starred_time_struct(song):
     """ Take a song, return the starred date in the form of a time module 9-tuple. """
     try:
         return time.strptime(song.get('starred', ''), '%Y-%m-%dT%H:%M:%S.%fZ')
-    except ValueError as e:
+    except ValueError:
         return time.gmtime(0)
+
 
 def handle_request(f, validate_json=True):
     """ Run a function that generates a Requests.Response and handle exceptions. """
@@ -158,6 +166,7 @@ def handle_request(f, validate_json=True):
     except (rex.RequestException, SubsonicError) as e:
         reraise_as_exception_type(RequestError, e)
 
+
 def create_directory_if_missing_from_path(path):
     """ Create the directories necessary to use the full path specified. """
     dirpath = os.path.dirname(path)
@@ -170,11 +179,13 @@ def create_directory_if_missing_from_path(path):
                 # path exists and isn't a directory
                 raise
 
+
 def reraise_as_exception_type(cls, exception):
     """ Reraise an exception as the specified type, preserving the original traceback. """
     exception_class, _, traceback = sys.exc_info()
     msg = 'Caught exception of type {}: {}'.format(exception_class, exception)
     raise cls, cls(msg), traceback
+
 
 @contextmanager
 def temporary_subdirectory(parent_directory):
@@ -188,9 +199,10 @@ def temporary_subdirectory(parent_directory):
             if e.errno != errno.ENOENT:
                 raise
 
+
 @contextmanager
 def open_tempfile_with_atomic_write_to(path, **kwargs):
-    """ 
+    """
     Open a temporary file object that atomically moves to the specified
     path upon exiting the context manager.
 
@@ -218,6 +230,7 @@ def open_tempfile_with_atomic_write_to(path, **kwargs):
                 pass
             else:
                 raise e
+
 
 def main(args, options):
     # Requests vendors its own urllib3, which emits annoying messages
@@ -285,7 +298,7 @@ def main(args, options):
                 download_params = {'id': song['id']}
                 download_response = handle_request(
                     lambda: session.get("https://localhost:4041/rest/download.view",
-                                params=download_params),
+                                        params=download_params),
                     validate_json=False)
             except RequestError as e:
                 log.error("Failed downloading the following song: {}\n{}".format(song['path'], e))
