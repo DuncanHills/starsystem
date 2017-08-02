@@ -54,6 +54,8 @@ def configure_app(app):
                    help='Don\'t verify SSL certificates. Verification is enabled by default.')
     app.add_option('-g', '--gen-token-interactive', dest='gen_token', default=False,
                    action="store_true", help='Generate an API token interactively.')
+    app.add_option('-v', '--debug', dest='debug', default=False,
+                   action="store_true", help='Enable debug output.')
 
     app.set_option('twitter_common_log_disk_log_level', 'NONE', force=True)
 
@@ -267,7 +269,7 @@ def main(args, options):
     # Get starred songs
     try:
         get_starred_response = handle_request(
-            lambda: session.get("https://localhost:4041/rest/getStarred.view"))
+            lambda: session.get("https://{}/rest/getStarred.view".format(subsonic_uri)))
     except RequestError as e:
         log.error("Bad response from Subsonic while fetching starred songs list:\n{}".format(e))
         raise
@@ -285,8 +287,10 @@ def main(args, options):
 
     # Sort the songs by starred date so we can sync them in chronological order
     sorted_starred_songs = sorted(starred_songs, key=song_to_starred_time_struct)
+
     start_date = get_start_date(download_path, sorted_starred_songs, songs_sorted=True,
                                 since=options.since)
+
     sync_file_path = get_sync_file_path(download_path)
 
     # Sync each song in chronological order by starred date
@@ -297,7 +301,7 @@ def main(args, options):
             try:
                 download_params = {'id': song['id']}
                 download_response = handle_request(
-                    lambda: session.get("https://localhost:4041/rest/download.view",
+                    lambda: session.get("https://{}/rest/download.view".format(subsonic_uri),
                                         params=download_params),
                     validate_json=False)
             except RequestError as e:
