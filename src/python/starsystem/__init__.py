@@ -269,7 +269,7 @@ def main(args, options):
     # Get starred songs
     try:
         get_starred_response = handle_request(
-            lambda: session.get("https://{}/rest/getStarred.view".format(options.subsonic_uri)))
+            lambda: session.get("{}/rest/getStarred.view".format(options.subsonic_uri)))
     except RequestError as e:
         log.error("Bad response from Subsonic while fetching starred songs list:\n{}".format(e))
         raise
@@ -301,7 +301,7 @@ def main(args, options):
             try:
                 download_params = {'id': song['id']}
                 download_response = handle_request(
-                    lambda: session.get("https://{}/rest/download.view".format(options.subsonic_uri),
+                    lambda: session.get("{}/rest/download.view".format(options.subsonic_uri),
                                         params=download_params),
                     validate_json=False)
             except RequestError as e:
