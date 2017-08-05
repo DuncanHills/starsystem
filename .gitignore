@@ -1,3 +1,4 @@
 .cache
 .pants.d
+.pants*
 dist
