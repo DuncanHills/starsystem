@@ -5,5 +5,5 @@ python_library(
         '3rdparty/python:twitter.common.app',
         '3rdparty/python:twitter.common.log',
     ],
-    sources=globs('*.py'),
+    sources=['*.py'],
 )

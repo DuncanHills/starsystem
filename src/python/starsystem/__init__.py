@@ -85,8 +85,8 @@ def generate_token_interactive():
     if len(salt) < 6 or not salt.isdigit():
         app.error('Salt value is not an integer of at least six digits.')
     token = md5(password + salt).hexdigest()
-    print 'Your API token is: {}'.format(token)
-    print 'This must be used with the same salt value entered during this session.'
+    print('Your API token is: {}'.format(token))
+    print('This must be used with the same salt value entered during this session.')
 
 
 def get_sync_file_path(download_path):
@@ -186,7 +186,7 @@ def reraise_as_exception_type(cls, exception):
     """ Reraise an exception as the specified type, preserving the original traceback. """
     exception_class, _, traceback = sys.exc_info()
     msg = 'Caught exception of type {}: {}'.format(exception_class, exception)
-    raise cls, cls(msg), traceback
+    raise cls(cls(msg)).with_traceback(traceback)
 
 
 @contextmanager
@@ -276,8 +276,7 @@ def main(args, options):
 
     # Extract songs from response
     try:
-        starred_songs = filter(lambda song: song['contentType'].startswith('audio'),
-                               get_starred_response.json()['subsonic-response']['starred']['song'])
+        starred_songs = [song for song in get_starred_response.json()['subsonic-response']['starred']['song'] if song['contentType'].startswith('audio')]
     except (KeyError, ValueError) as e:
         reraise_as_exception_type(RequestError, e)
 

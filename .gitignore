@@ -1,5 +1,6 @@
 .cache
-.pants.d
-.pants*
 .python-version
-dist
+/.pants.d/
+/dist/
+/.pids
+/.pants.workdir.file_lock*
