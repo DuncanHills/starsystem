@@ -1,5 +1,3 @@
-from twitter.common import app
-from starsystem import configure_app, main
+from starsystem import cli
 
-configure_app(app)
-app.main()
+cli(prog_name='starsystem.pex')

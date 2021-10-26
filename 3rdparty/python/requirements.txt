@@ -1,3 +1,2 @@
+click==8.0.3
 requests==2.26.0
-twitter.common.app==0.3.11
-twitter.common.log==0.3.11

@@ -1,6 +1,8 @@
-.cache
-.python-version
+/.cache
+/.mypy_cache/
 /.pants.d/
-/dist/
-/.pids
 /.pants.workdir.file_lock*
+/.pids
+/.python-version
+/.vscode/
+/dist/

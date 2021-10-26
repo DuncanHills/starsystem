@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
+import click
 import errno
+import logging
 import os
 import requests
 import requests.exceptions as rex
@@ -13,7 +15,6 @@ from functools import partial
 from getpass import getpass
 from hashlib import md5
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
-from twitter.common import app, log
 
 from starsystem import constants
 
@@ -28,65 +29,6 @@ class SubsonicError(Exception):
 
 class SyncFileError(Exception):
     pass
-
-
-def configure_app(app):
-    """ Register the application's options, set usage, and configure submodules. """
-
-    app.set_name('starsystem')
-
-    app.set_usage("{} [opts]\nOptions marked with * are required.".format(app.name()))
-
-    app.add_option('-i', '--uri', dest='subsonic_uri',
-                   help='* URI of the Subsonic server.')
-    app.add_option('-u', '--user', dest='username',
-                   help='* Username on the specified Subsonic server.')
-    app.add_option('-t', '--token', dest='token',
-                   help='* API token for the given username/salt combination\n'
-                        'See: http://www.subsonic.org/pages/api.jsp')
-    app.add_option('-s', '--salt', dest='salt',
-                   help='* Salt used to generate the API token.')
-    app.add_option('-p', '--path', dest='download_path',
-                   help='* Path to the directory whither songs will be downloaded.')
-    app.add_option('-S', '--since', dest='since', type='date',
-                   help='Collect all songs since the specified date.')
-    app.add_option('-I', '--insecure', dest='insecure', default=False, action="store_true",
-                   help='Don\'t verify SSL certificates. Verification is enabled by default.')
-    app.add_option('-g', '--gen-token-interactive', dest='gen_token', default=False,
-                   action="store_true", help='Generate an API token interactively.')
-    app.add_option('-v', '--debug', dest='debug', default=False,
-                   action="store_true", help='Enable debug output.')
-
-    app.set_option('twitter_common_log_disk_log_level', 'NONE', force=True)
-
-
-def required_options_present(options, option_values):
-    """
-    Check for the presence of required options, with the side effect of
-    logging missing options.
-    """
-    missing_options = []
-    for option in sorted(options, key=lambda option: option.get_opt_string()):
-        if option.dest is not None:
-            option_value = getattr(option_values, option.dest)
-            if option.help.startswith('*') and option_value in (None, ''):
-                missing_options.append(option)
-    if len(missing_options) > 0:
-        for option in missing_options:
-            log.error('Required option is missing: {}'.format(option.get_opt_string()))
-        return False
-    else:
-        return True
-
-
-def generate_token_interactive():
-    password = getpass('Enter your Subsonic password: ')
-    salt = getpass('Enter a salt (an integer of at least six digits): ')
-    if len(salt) < 6 or not salt.isdigit():
-        app.error('Salt value is not an integer of at least six digits.')
-    token = md5(password + salt).hexdigest()
-    print('Your API token is: {}'.format(token))
-    print('This must be used with the same salt value entered during this session.')
 
 
 def get_sync_file_path(download_path):
@@ -128,7 +70,7 @@ def get_start_date(download_path, starred_songs, songs_sorted=False, since=None)
     """
     # Use since if present
     if since is not None:
-        return time.strptime(str(since), '%Y-%m-%d')
+        return since.timetuple()
     # Try to get most recent sync date from sync file
     try:
         return read_time_struct_from_sync_file(get_sync_file_path(download_path))
@@ -234,61 +176,100 @@ def open_tempfile_with_atomic_write_to(path, **kwargs):
                 raise e
 
 
-def main(args, options):
+@click.group()
+def cli():
+    """
+    A python tool for syncing your starred songs from a Subsonic server to a local directory.
+
+    Run `sync --help` for more detailed options and usage information.
+    """
+    pass
+
+
+@cli.command()
+def token():
+    """Generate an API token interactively."""
+    password = getpass('Enter your Subsonic password: ')
+    salt = getpass('Enter a salt (an integer of at least six digits): ')
+    if len(salt) < 6 or not salt.isdigit():
+        sys.exit('Salt value is not an integer of at least six digits.')
+    token = md5(password + salt).hexdigest()
+    print('Your API token is: {}'.format(token))
+    print('This must be used with the same salt value entered during this session.')
+
+
+@cli.command()
+@click.option('-i', '--uri', 'subsonic_uri', required=True, type=str, 
+    help='URI of the Subsonic server.')
+@click.option('-u', '--user', 'username', required=True, type=str, 
+    help='Username on the specified Subsonic server.')
+@click.option('-t', '--token', 'token', required=True, type=str,
+    help='API token for the given username/salt combination.\n'
+         'See: http://www.subsonic.org/pages/api.jsp')
+@click.option('-s', '--salt', 'salt', required=True, type=str, 
+    help='Salt used to generate the API token.')
+@click.option('-p', '--path', 'download_path', required=True, type=click.Path(),
+    help='Path of the directory whither songs will be downloaded.')
+@click.option('-S', '--since', 'since', type=click.DateTime(),
+    help='Collect all songs since the specified date.')
+@click.option('-I', '--insecure/--no-insecure', 'insecure', default=False,
+    help='Don\'t verify SSL certificates. Verification is enabled by default.')
+@click.option('-v', '--debug/--no-debug', 'debug', default=False,
+    help='Enable debug output.')
+def sync(subsonic_uri, username, token, salt, download_path, since, insecure, debug):
+    """
+    Sync your starred items in subsonic to the specified directory.
+
+    A best-attempt is made to track the history of synced files so they are not re-synced if you 
+    move or delete them. If you provide the --since option, all files since that date will be 
+    synced. Starsystem will not clobber existing files, so feel free to retag your local copies.
+    """
+
+    download_path = os.path.expanduser(download_path)
+
     # Requests vendors its own urllib3, which emits annoying messages
     # when using insecure mode
     requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
-    if len(args) != 0:
-        app.help()
-
-    if options.gen_token:
-        generate_token_interactive()
-        app.shutdown(0)
-
-    # Kind of a hack, but whatever
-    option_definitions = app.Application.active()._main_options
-
-    if not required_options_present(option_definitions, options):
-        app.help()
-
-    download_path = os.path.expanduser(options.download_path)
-
     base_params = dict(
-        t = options.token,
-        u = options.username,
-        s = options.salt,
-        c = app.name(),
+        t = token,
+        u = username,
+        s = salt,
+        c = 'starsystem',
         f = 'json',
         v = constants.API_VERSION)
 
     session = requests.Session()
     session.params.update(base_params)
-    session.verify = not options.insecure
+    session.verify = not insecure
 
     # Get starred songs
     try:
         get_starred_response = handle_request(
-            lambda: session.get("{}/rest/getStarred.view".format(options.subsonic_uri)))
+            lambda: session.get("{}/rest/getStarred.view".format(subsonic_uri)))
     except RequestError as e:
-        log.error("Bad response from Subsonic while fetching starred songs list:\n{}".format(e))
+        logging.error("Bad response from Subsonic while fetching starred songs list:\n{}".format(e))
         raise
 
     # Extract songs from response
     try:
-        starred_songs = [song for song in get_starred_response.json()['subsonic-response']['starred']['song'] if song['contentType'].startswith('audio')]
+        starred_songs = [
+            song 
+            for song in get_starred_response.json()['subsonic-response']['starred']['song'] 
+            if song['contentType'].startswith('audio')
+        ]
     except (KeyError, ValueError) as e:
         reraise_as_exception_type(RequestError, e)
 
     # Do nothing if no songs are starred
     if len(starred_songs) == 0:
-        app.shutdown(0)
+        sys.exit(0)
 
     # Sort the songs by starred date so we can sync them in chronological order
     sorted_starred_songs = sorted(starred_songs, key=song_to_starred_time_struct)
 
     start_date = get_start_date(download_path, sorted_starred_songs, songs_sorted=True,
-                                since=options.since)
+                                since=since)
 
     sync_file_path = get_sync_file_path(download_path)
 
@@ -300,11 +281,12 @@ def main(args, options):
             try:
                 download_params = {'id': song['id']}
                 download_response = handle_request(
-                    lambda: session.get("{}/rest/download.view".format(options.subsonic_uri),
+                    lambda: session.get("{}/rest/download.view".format(subsonic_uri),
                                         params=download_params),
                     validate_json=False)
             except RequestError as e:
-                log.error("Failed downloading the following song: {}\n{}".format(song['path'], e))
+                logging.error(
+                    "Failed downloading the following song: {}\n{}".format(song['path'], e))
                 raise
             with open_tempfile_with_atomic_write_to(song_full_path, mode='wb') as download_file:
                 download_file.write(download_response.content)

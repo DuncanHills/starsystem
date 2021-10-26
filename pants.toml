@@ -1,0 +1,9 @@
+[GLOBAL]
+pants_version = "2.7.0"
+backend_packages = [
+  'pants.backend.python'
+]
+[anonymous-telemetry]
+enabled = false
+[python-setup]
+interpreter_search_paths = ["<PYENV>"]
