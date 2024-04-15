@@ -1,9 +1,9 @@
 [GLOBAL]
-pants_version = "2.7.0"
+pants_version = "2.12.0"
 backend_packages = [
   'pants.backend.python'
 ]
 [anonymous-telemetry]
 enabled = false
-[python-setup]
-interpreter_search_paths = ["<PYENV>"]
+[python-bootstrap]
+search_path = ["<PYENV>", "/opt/homebrew/bin/"]
