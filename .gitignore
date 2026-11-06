@@ -1,8 +1,15 @@
-/.cache
+__pycache__/
+*.py[cod]
+/.venv/
+/.pytest_cache/
+/.ruff_cache/
 /.mypy_cache/
+/.vscode/
+/build/
+/dist/
+*.egg-info/
+
+# Leftovers from the old Pants build
 /.pants.d/
 /.pants.workdir.file_lock*
 /.pids
-/.python-version
-/.vscode/
-/dist/
