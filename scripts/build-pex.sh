@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Build dist/starsystem.pex: a single-file executable that runs on any machine with
+# Build dist/starsystem (a PEX file): a single-file executable that runs on any machine with
 # Python >= 3.11, with dependencies pinned to the versions in uv.lock.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-out="dist/starsystem.pex"
+out="dist/starsystem"
 reqs="$(mktemp)"
 trap 'rm -f "$reqs"' EXIT
 

@@ -1,105 +1,129 @@
 # starsystem
+A python tool for syncing your starred songs from a Subsonic or [OpenSubsonic](https://opensubsonic.netlify.app/) server (Navidrome, Gonic, etc.) to a local directory.
 
-A Python tool for syncing your starred songs from a Subsonic or [OpenSubsonic](https://opensubsonic.netlify.app/) server (Navidrome, Gonic, Airsonic-Advanced, …) to a local directory.
+Every starred song gets downloaded once. Starsystem remembers which songs it has synced, so if you move, rename, retag or delete your local copies, they won't come back. It will never clobber existing files either. If you do want deleted songs back, use `--since`.
 
-Each starred song is downloaded **once**. starsystem records the IDs of the songs it has synced, so moving, renaming, retagging or deleting your local copies won't make them come back. Existing files are never overwritten. If you want to restore songs you deleted, use `--since`.
-
-I use starsystem with file sync software (Syncthing) to bridge the gap between Subsonic and Rekordbox on multiple machines. You should too!
+I use starsystem in combination with file sync software (Syncthing) to bridge the gap between Subsonic and Rekordbox on multiple machines. You should too!
 
 ## Install
 
-starsystem needs Python 3.11 or newer. The easiest way to install it is with [uv](https://docs.astral.sh/uv/):
-
-```bash
+You'll need Python 3.11 or newer. The easiest way to get starsystem is with [uv](https://docs.astral.sh/uv/):
+```
 uv tool install git+https://github.com/DuncanHills/starsystem.git
 ```
 
-Or run it once without installing anything:
+## Build
 
-```bash
-uvx --from git+https://github.com/DuncanHills/starsystem.git starsystem --help
+If you'd rather have a single executable file, clone the repo and build a [PEX](https://docs.pex-tool.org/):
 ```
-
-## Development
-
-```bash
 git clone https://github.com/DuncanHills/starsystem.git
 cd starsystem
-uv sync                 # create .venv with all dependencies
-uv run starsystem --help
-uv run pytest           # tests
-uv run ruff check .     # lint
-uv build                # wheel + sdist in dist/
-```
-
-### Single-file executable (PEX)
-
-To build a self-contained `dist/starsystem.pex` that runs anywhere Python 3.11+ is installed, with dependencies pinned to `uv.lock`, run:
-
-```bash
 ./scripts/build-pex.sh
 ```
 
-Copy it somewhere on your `PATH`, or schedule it with cron or [launchd](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/ScheduledJobs.html):
+This puts a `starsystem` executable in `dist/`, with dependencies pinned to whatever's in `uv.lock`. It runs anywhere Python 3.11+ is installed. Copy it somewhere useful (like a location in your path) or schedule it in your crontab/[launchd](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/ScheduledJobs.html).
+```
+./dist/starsystem --help
+```
 
-```bash
-./dist/starsystem.pex --help
+If you want to hack on it:
+```
+uv sync
+uv run starsystem --help
+uv run pytest
+uv run ruff check .
 ```
 
 ## Authentication
 
-Use one of these, from most to least preferred:
+If your server supports OpenSubsonic API keys, use one. Generate a key in your server's web UI and pass it with `--api-key`.
 
-1. **API key** (`--api-key`): requires an OpenSubsonic server with the `apiKeyAuthentication` extension. Generate a key in your server's web UI.
-2. **Username + password** (`--user` and `--password`): starsystem generates a fresh salted token for every request, so your password is never sent over the wire.
-3. **Legacy token** (`--user`, `--token` and `--salt`): a pre-computed `md5(password + salt)`. `starsystem token` will generate one for you.
+Otherwise, pass `--user` and `--password`. Starsystem salts and hashes your password fresh for every request, so the password itself never gets sent. If you're still using a token and salt from an older version, `--token` and `--salt` still work, and the `token` command will make a token from your password and a salt in case you forget how.
 
-Every option can be set with an environment variable instead (`STARSYSTEM_URL`, `STARSYSTEM_API_KEY`, `STARSYSTEM_USER`, `STARSYSTEM_PASSWORD`, `STARSYSTEM_TOKEN`, `STARSYSTEM_SALT`, `STARSYSTEM_PATH`). That keeps secrets out of your shell history, `ps` output, and crontab.
-
-Run `starsystem check` to confirm that the server is reachable and your credentials work:
-
-```bash
-STARSYSTEM_API_KEY=... starsystem check --url https://music.example.com
-```
-
-When the server supports the OpenSubsonic `formPost` extension, credentials are sent in the request body rather than in the URL, which keeps them out of server and proxy logs.
+Every option can also be set as an environment variable (`STARSYSTEM_URL`, `STARSYSTEM_API_KEY`, `STARSYSTEM_USER`, `STARSYSTEM_PASSWORD`, `STARSYSTEM_PATH`, etc.). I'd recommend that for anything secret, so your key doesn't end up in your shell history or crontab.
 
 ## Usage
 
-```bash
-export STARSYSTEM_URL=https://music.example.com
-export STARSYSTEM_API_KEY=...
-starsystem sync --path ~/Music/Starred
+```
+Usage: starsystem [OPTIONS] COMMAND [ARGS]...
+
+Commands:
+  check  Check that the server is reachable and the credentials work.
+  sync   Sync your starred songs to the specified directory.
+  token  Generate a legacy salted token interactively.
 ```
 
-### Options
+### Sync Command
+The meat and potatoes of the application.
+```
+export STARSYSTEM_URL=https://music.example.com
+export STARSYSTEM_API_KEY=...
+starsystem sync --path ~/Music/starred
+```
 
-| Option | Description |
-| --- | --- |
-| `-i, --url` | Base URL of the server (`/rest` is optional). |
-| `-k, --api-key` | OpenSubsonic API key. |
-| `-u, --user`, `-P, --password` | Username and password. |
-| `-t, --token`, `-s, --salt` | Legacy pre-computed token and its salt. |
-| `-p, --path` | Directory that songs are downloaded into. |
-| `-S, --since DATE` | Ignore sync history and re-download every song starred at or after `DATE` (local time) that is missing from disk. Earlier songs are skipped, on this run and on later ones. Accepts `YYYY-MM-DD`, `YYYY-MM-DDTHH:MM:SS` or `YYYY-MM-DD HH:MM:SS`. |
-| `--state-file` | Where sync history is stored. Defaults to `<path>/.starsystem.json`. |
-| `-n, --dry-run` | Show what would be downloaded, and change nothing. |
-| `-I, --insecure` | Don't verify TLS certificates. |
-| `--timeout` | Network timeout in seconds (default 60). |
-| `-v, --debug` | Verbose logging. |
+```
+Options:
+  -i, --url TEXT                  Base URL of the Subsonic/OpenSubsonic
+                                  server, e.g. https://music.example.com.
+                                  [required]
+  -k, --api-key TEXT              OpenSubsonic API key (preferred). Generate
+                                  one in your server's web UI.
+  -u, --user TEXT                 Username, for password or legacy token auth.
+  -P, --password TEXT             Password. A salted token is derived per
+                                  request; the password is never sent.
+  -t, --token TEXT                Legacy: pre-computed md5(password + salt).
+                                  Requires --salt.
+  -s, --salt TEXT                 Legacy: salt for --token.
+  -I, --insecure / --no-insecure  Don't verify TLS certificates.
+  --timeout FLOAT                 Network timeout in seconds.  [default: 60.0]
+  -v, --debug / --no-debug        Enable debug output.
+  -p, --path DIRECTORY            Directory songs are downloaded into.
+                                  [required]
+  -S, --since [%Y-%m-%d|%Y-%m-%dT%H:%M:%S|%Y-%m-%d %H:%M:%S]
+                                  Ignore sync history: (re)download every song
+                                  starred at or after this local date/time
+                                  that is missing from disk. Earlier songs are
+                                  skipped now and on later runs.
+  --state-file FILE               Where to record synced songs. Defaults to
+                                  <path>/.starsystem.json.
+  -n, --dry-run                   Show what would be downloaded and exit.
+  -h, --help                      Show this message and exit.
+```
 
-A song that fails to download is logged and skipped, and the rest of the sync continues. starsystem exits with status 1 if any song failed. The state file is saved after every download, so an interrupted run loses nothing.
+Starsystem keeps track of what it has synced in `.starsystem.json` in your download directory. It's a list of song IDs for each server, so a song you star today gets picked up no matter when the server thinks it was starred. Don't use different `--url`s for the same server (like `http://` one day and `https://` the next), or starsystem will think it's a new server.
 
-### How sync history works
+If a download fails, starsystem logs it and keeps going, then exits with status 1 at the end. It saves its progress after every song, so you can kill it halfway through and pick up where you left off.
 
-`.starsystem.json` maps each server to the IDs of the songs synced from it, along with their paths and starred dates. On each run:
+`--since` does two jobs. Use it to sync only the songs you starred after a certain date, like when you're setting up a new folder and don't want your whole back catalog. Or use it to get stuff back, since it downloads everything starred on or after that date that isn't on disk, even songs starsystem already synced once and you deleted. Either way, anything starred before that date gets marked as synced and left alone, now and in future runs.
 
-- **Without `--since`**: every starred song whose ID isn't in the history is downloaded. Songs you star later are always picked up, even if the server reports an older starred date.
-- **With `--since`**: songs starred on or after that date are downloaded if they're missing from disk, whatever the history says. Songs starred before that date are not downloaded, and are recorded as synced so that later runs skip them too.
-- In both cases, if a file already exists at a song's path it is kept and recorded as synced.
+### Check Command
+Makes sure starsystem can reach your server and log in, without downloading anything. Handy when you're setting things up, or when your cron job stops working. You'll see something like this:
+```
+$ starsystem check --url https://music.example.com
+Connected to https://music.example.com
+Server: navidrome 0.58.0
+API version: 1.16.1
+Extensions: apiKeyAuthentication, formPost, songLyrics, transcodeOffset
+Authentication OK.
+```
 
-### Upgrading from starsystem 1.x
+### Token Command
+A small utility that makes a token from your password and a salt you pick, for `--token`/`--salt`, in case you forget how. You probably want `--password` or `--api-key` instead.
 
-The `.synced_to` file from 1.x is no longer read, and you can delete it. On its first run, 2.x records every song that is already on disk as synced and downloads any starred songs that are missing. If you've deleted songs you don't want back, run once with `--since` set to today to start tracking without downloading the backlog.
+## Using an existing music folder
 
-`--uri` is now `--url`, and `--token`/`--salt` can be replaced with `--password` or `--api-key`.
+If you point starsystem at a folder that already has some of your starred songs in it, it'll figure out what you have. Any song already sitting at the path the server reports for it gets kept and marked as synced. Anything missing gets downloaded. Try a dry run first to see what it's going to do:
+```
+starsystem sync --path ~/Music/starred --dry-run
+```
+
+The last line tells you how many songs it would download and how many it found already present. If that list is longer than you expect, the usual reason is that the files are at different paths from the ones the server reports (maybe you renamed or reorganized them), so starsystem doesn't recognize them. The dry run prints the path it expects for each song, so you can compare.
+
+If the list has songs you deleted on purpose and don't want back, run it once with `--since` set to today:
+```
+starsystem sync --path ~/Music/starred --since 2026-11-06
+```
+
+That marks everything you starred before today as synced without downloading it. From then on, starsystem only grabs songs you star after that.
+
+If your server's music lives on an SMB or NTFS share, file names with characters like `?`, `:` or `"` can come through from the server as invisible placeholder characters. Starsystem translates those back, so they'll still match your local files.
